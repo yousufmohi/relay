@@ -1,0 +1,19 @@
+# E4: kill one worker pod every 10s (rolling crashes, no graceful drain).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: relay-e4-worker-kill
+  namespace: relay
+spec:
+  schedule: "@every 10s"
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    gracePeriod: 0
+    selector:
+      namespaces: [relay]
+      labelSelectors:
+        app.kubernetes.io/name: relay-worker

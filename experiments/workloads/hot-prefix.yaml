@@ -1,0 +1,12 @@
+# One prefix receives 90% of the traffic: tests bounded load.
+name: hot-prefix
+kind: hot-prefix
+rate: 6
+duration: 60s
+max_tokens: 48
+temperature: 0
+params:
+  prefixes: 8
+  prefix_tokens: 2000
+  hot_fraction: 0.9
+  user_tokens: [30, 120]

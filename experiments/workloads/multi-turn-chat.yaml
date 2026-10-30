@@ -1,0 +1,15 @@
+# Conversations that grow turn by turn; each turn resends the whole history
+# (synthetic, ShareGPT-like turn lengths).
+name: multi-turn-chat
+kind: multi-turn-chat
+rate: 5
+duration: 60s
+max_tokens: 48
+temperature: 0
+params:
+  prefixes: 4
+  prefix_tokens: 400
+  zipf_s: 1.5
+  turns: [3, 8]
+  think_time: 1s
+  user_tokens: [40, 150]

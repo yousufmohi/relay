@@ -1,0 +1,12 @@
+# Many users, a few long system prompts with skewed (Zipf) popularity.
+name: shared-system-prompt
+kind: shared-system-prompt
+rate: 5
+duration: 60s
+max_tokens: 48
+temperature: 0
+params:
+  prefixes: 16
+  prefix_tokens: 1500
+  zipf_s: 1.2
+  user_tokens: [30, 120]

@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package relay.v1;
+
+option go_package = "github.com/yousufmohi/relay/gen/relay/v1;relayv1";
+
+// WorkerStatsService runs inside each worker pod's sidecar. Every router
+// replica opens one long-lived Watch stream to every sidecar it knows about.
+// The sidecar pushes a WorkerStats snapshot after each scrape of the model
+// server (default every 250ms) and immediately on state changes (draining,
+// restart detected).
+service WorkerStatsService {
+  // Bidirectional so a router can identify itself and send keepalive pings;
+  // the sidecar never needs to answer them beyond continuing to stream.
+  rpc Watch(stream WatchRequest) returns (stream WatchResponse);
+}
+
+message WatchRequest {
+  // Stable identifier of the router replica (pod name / hostname).
+  string router_id = 1;
+  // Wall-clock send time, for debugging clock skew only.
+  int64 sent_unix_ms = 2;
+}
+
+message WatchResponse {
+  WorkerStats stats = 1;
+}
+
+enum WorkerState {
+  WORKER_STATE_UNSPECIFIED = 0;
+  // Model server answers its metrics endpoint; accept new requests.
+  WORKER_STATE_READY = 1;
+  // Graceful shutdown in progress: finish in-flight streams, accept no new ones.
+  WORKER_STATE_DRAINING = 2;
+  // Sidecar cannot scrape the model server.
+  WORKER_STATE_UNAVAILABLE = 3;
+}
+
+message WorkerStats {
+  // Identity of the worker as the sidecar knows it (pod name).
+  string worker_id = 1;
+  // Random per sidecar process. A change means the pod restarted.
+  string instance_id = 2;
+  // Incremented every time the sidecar detects the model server restarted
+  // (its cumulative counters went backwards or it became reachable again
+  // after being down). Routers clear their prefix index for this worker when
+  // (instance_id, epoch) changes.
+  uint64 epoch = 3;
+  // Monotonic per stream.
+  uint64 seq = 4;
+  int64 scraped_unix_ms = 5;
+
+  WorkerState state = 6;
+
+  // Requests currently being decoded / prefilled.
+  uint32 running_requests = 7;
+  // Requests queued inside the model server waiting for a slot.
+  uint32 waiting_requests = 8;
+
+  // Fraction of KV cache blocks in use by running requests (0..1).
+  double kv_cache_usage = 9;
+  // Total KV cache capacity in tokens; routers size their per-worker prefix
+  // index from this. 0 = unknown.
+  uint64 kv_cache_capacity_tokens = 10;
+
+  // Cumulative prefix-cache counters (tokens). 0/0 if the server does not
+  // expose them.
+  uint64 prefix_cache_hit_tokens = 11;
+  uint64 prefix_cache_query_tokens = 12;
+
+  // Model served, as reported by the model server.
+  string model = 13;
+}

@@ -1,0 +1,52 @@
+{{- if .Values.grafanaDashboards }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboards
+  labels: {{- include "relay.labels" . | nindent 4 }}
+    grafana_dashboard: "1"   # picked up by the Grafana chart's dashboard sidecar
+data:
+  relay.json: |-
+{{ .Files.Get "dashboards/relay.json" | indent 4 }}
+---
+{{- end }}
+{{- if .Values.tracing.jaeger.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-jaeger
+  labels: {{- include "relay.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: relay-jaeger}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: relay-jaeger}
+    spec:
+      containers:
+        - name: jaeger
+          image: {{ .Values.tracing.jaeger.image }}
+          env: [{name: COLLECTOR_OTLP_ENABLED, value: "true"}]
+          ports:
+            - {name: otlp, containerPort: 4317}
+            - {name: ui, containerPort: 16686}
+          readinessProbe:
+            httpGet: {path: /, port: 14269}  # jaeger 1.x admin/health port
+          livenessProbe:
+            httpGet: {path: /, port: 14269}  # jaeger 1.x admin/health port
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: "1", memory: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-jaeger
+  labels: {{- include "relay.labels" . | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: relay-jaeger}
+  ports:
+    - {name: otlp, port: 4317}
+    - {name: ui, port: 16686}
+{{- end }}

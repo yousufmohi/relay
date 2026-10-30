@@ -1,0 +1,16 @@
+bin/
+.venv/
+__pycache__/
+results/**/logs/
+results/smoke/
+results/*_run.log
+deploy/terraform/**/.terraform/
+deploy/terraform/**/terraform.tfstate*
+deploy/terraform/**/.terraform.lock.hcl
+*.exe
+results/m2check/
+results/e9x/
+results/e9g/
+results/**/workers*.txt
+results/**/workers.tmp
+results/**/replicas*

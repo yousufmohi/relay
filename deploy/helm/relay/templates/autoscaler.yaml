@@ -1,0 +1,71 @@
+{{- if .Values.autoscaler.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+  labels: {{- include "relay.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+  labels: {{- include "relay.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["{{ .Release.Name }}-worker"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["{{ .Release.Name }}-worker"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+  labels: {{- include "relay.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-autoscaler}
+subjects:
+  - {kind: ServiceAccount, name: {{ .Release.Name }}-autoscaler, namespace: {{ .Release.Namespace }}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-autoscaler
+  labels: {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: relay-autoscaler, app.kubernetes.io/instance: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-autoscaler
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: {{ .Release.Name }}-autoscaler
+      containers:
+        - name: autoscaler
+          image: {{ include "relay.image" (dict "root" . "name" "autoscaler") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{name: metrics, containerPort: 9090}]
+          env:
+            - {name: NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: WORKER_DEPLOYMENT, value: "{{ .Release.Name }}-worker"}
+            - {name: PROMETHEUS_URL, value: {{ .Values.autoscaler.prometheusUrl | quote }}}
+            {{- range $k, $v := .Values.autoscaler.env }}
+            - {name: {{ $k }}, value: {{ $v | quote }}}
+            {{- end }}
+          livenessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 5
+          resources: {{- toYaml .Values.autoscaler.resources | nindent 12 }}
+{{- end }}

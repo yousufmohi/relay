@@ -1,0 +1,69 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l $(git ls-files '*.go' | grep -v '^gen/'))"
+      - name: go vet
+        run: go vet ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+      - name: buf lint
+        run: go run github.com/bufbuild/buf/cmd/buf@v1.47.2 lint
+      - name: unit tests (race)
+        run: go test -race -count=1 ./...
+
+  integration:
+    # Short CPU-only end-to-end test: build images, bring up a k3d cluster with
+    # simulated workers, push traffic through the router, kill a worker
+    # mid-run and require zero client-visible errors.
+    runs-on: ubuntu-latest
+    needs: lint-test
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+      - name: install k3d
+        run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.8.3 bash
+      - name: build images
+        run: make images
+      - name: cluster
+        run: |
+          k3d cluster create relay -p "30080:30080@server:0" --wait
+          k3d image import -c relay relay/router:dev relay/sidecar:dev relay/simworker:dev
+          helm install relay deploy/helm/relay -n relay --create-namespace --set worker.replicas=3 --wait --timeout 5m
+      - name: smoke + failover
+        run: |
+          go build -o bin/loadgen ./loadgen/cmd/loadgen
+          curl -fsS -N localhost:30080/v1/chat/completions -H 'Content-Type: application/json' \
+            -d '{"messages":[{"role":"user","content":"hello"}],"max_tokens":8,"stream":true}' | tee /tmp/out
+          grep -q '\[DONE\]' /tmp/out
+          bin/loadgen -targets http://localhost:30080 -workload experiments/workloads/shared-system-prompt.yaml \
+            -rate 3 -duration 40s -max-tokens 100 -out /tmp/run.jsonl &
+          sleep 15
+          kubectl -n relay delete pod -l app.kubernetes.io/name=relay-worker --field-selector=status.phase=Running \
+            --grace-period=0 --force --wait=false $(kubectl -n relay get pod -l app.kubernetes.io/name=relay-worker -o name | head -1 | cut -d/ -f2) || true
+          wait
+          python3 - <<'EOF'
+          import json
+          rows = [json.loads(l) for l in open("/tmp/run.jsonl")]
+          bad = [r for r in rows if r["status"] != "ok"]
+          print(f"{len(rows)} requests, {len(bad)} errors, {sum(r['failovers'] for r in rows)} failovers")
+          assert rows and not bad, bad[:3]
+          EOF
+      - name: logs on failure
+        if: failure()
+        run: kubectl -n relay logs -l app.kubernetes.io/part-of=relay --all-containers --tail=200 || true

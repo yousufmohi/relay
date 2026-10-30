@@ -1,0 +1,93 @@
+{{- if .Values.router.apiKey }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-router
+  labels: {{- include "relay.labels" . | nindent 4 }}
+stringData:
+  API_KEY: {{ .Values.router.apiKey | quote }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-router
+  labels: {{- include "relay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: router
+spec:
+  replicas: {{ .Values.router.replicas }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: relay-router, app.kubernetes.io/instance: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: relay-router
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: router
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      # Spread replicas so one node failure cannot take both routers.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: relay-router, app.kubernetes.io/instance: {{ .Release.Name }}}
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: router
+          image: {{ include "relay.image" (dict "root" . "name" "router") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - name: ROUTER_ID
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POLICY
+              value: {{ .Values.router.policy | quote }}
+            # Membership: the headless worker Service's A records = ready worker pods.
+            - name: WORKER_DNS
+              value: {{ .Release.Name }}-worker-headless.{{ .Release.Namespace }}.svc.cluster.local
+            - name: WORKER_PORT
+              value: "8080"
+            - name: SIDECAR_PORT
+              value: "9500"
+            - name: WORKER_FLAVOR
+              value: {{ if eq .Values.worker.flavor "vllm" }}vllm{{ else }}llamacpp{{ end }}
+            - name: WORKER_MODEL
+              value: {{ if eq .Values.worker.flavor "vllm" }}{{ .Values.worker.vllm.model | quote }}{{ else }}{{ .Values.worker.model | quote }}{{ end }}
+            - name: CHAT_TEMPLATE
+              value: {{ .Values.worker.chatTemplate | quote }}
+            {{- range $k, $v := .Values.router.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- include "relay.otel" . | nindent 12 }}
+          {{- if .Values.router.apiKey }}
+          envFrom: [{secretRef: {name: {{ .Release.Name }}-router}}]
+          {{- end }}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 3
+          resources: {{- toYaml .Values.router.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-router
+  labels: {{- include "relay.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.router.service.type }}
+  selector: {app.kubernetes.io/name: relay-router, app.kubernetes.io/instance: {{ .Release.Name }}}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      {{- if eq .Values.router.service.type "NodePort" }}
+      nodePort: {{ .Values.router.service.nodePort }}
+      {{- end }}

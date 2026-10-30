@@ -1,0 +1,87 @@
+image:
+  registry: ""          # e.g. "ghcr.io/you/" (with trailing slash); empty = local images imported into k3s
+  tag: dev
+  pullPolicy: IfNotPresent
+
+router:
+  replicas: 2
+  policy: relay
+  env:
+    BLOCK_SIZE_TOKENS: "64"
+    SCORE_ALPHA: "1.0"
+    SCORE_BETA: "0.5"
+    SCORE_GAMMA: "0.5"
+    LOAD_BOUND_C: "1.25"
+    QUEUE_MAX: "256"
+    STALL_TIMEOUT_MS: "3000"
+    FIRST_TOKEN_TIMEOUT_MS: "60000"
+    MAX_FAILOVERS: "2"
+    MAX_INFLIGHT_PER_WORKER: "8"
+    TOKENIZER: remote
+  apiKey: ""            # optional; stored in a Secret
+  service:
+    type: NodePort
+    nodePort: 30080
+  resources:
+    requests: {cpu: 250m, memory: 128Mi}
+    limits: {cpu: "2", memory: 512Mi}
+
+worker:
+  # model server flavour: llamacpp (CPU dev) | vllm (GPU) | sim (simulated, no model)
+  flavor: sim
+  replicas: 4
+  model: qwen2.5-0.5b-instruct
+  chatTemplate: chatml
+  terminationGracePeriodSeconds: 180   # long enough to drain in-flight streams
+  drainGraceSeconds: 150
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    modelUrl: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+    modelFile: qwen2.5-0.5b-instruct-q4_k_m.gguf
+    args: ["-np", "4", "-c", "8192", "-t", "2"]
+    resources:
+      requests: {cpu: "2", memory: 1500Mi}
+      limits: {cpu: "2", memory: 2Gi}
+  vllm:
+    image: vllm/vllm-openai:v0.11.0
+    model: Qwen/Qwen2.5-7B-Instruct
+    gpuMemoryUtilization: "0.85"
+    maxModelLen: "8192"
+    gpusPerWorker: 1
+    resources:
+      requests: {cpu: "4", memory: 24Gi}
+      limits: {cpu: "8", memory: 32Gi}
+  sim:
+    args: ["-slots", "4", "-cache-tokens", "24000"]
+    resources:
+      requests: {cpu: 100m, memory: 64Mi}
+      limits: {cpu: "1", memory: 256Mi}
+  sidecar:
+    scrapeMs: "250"
+    resources:
+      requests: {cpu: 50m, memory: 32Mi}
+      limits: {cpu: 500m, memory: 128Mi}
+
+autoscaler:
+  enabled: false
+  prometheusUrl: http://prometheus-server.monitoring.svc
+  env:
+    AUTOSCALER_TARGET_QUEUE_PER_WORKER: "4"
+    AUTOSCALER_TARGET_TTFT_P95_MS: "800"
+    AUTOSCALER_MIN_REPLICAS: "2"
+    AUTOSCALER_MAX_REPLICAS: "8"
+    AUTOSCALER_UP_WINDOW: 20s
+    AUTOSCALER_UP_COOLDOWN: 30s
+    AUTOSCALER_DOWN_WINDOW: 90s
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+tracing:
+  # OTLP endpoint (e.g. an OpenTelemetry Collector or Jaeger all-in-one).
+  otlpEndpoint: ""
+  jaeger:
+    enabled: false
+    image: jaegertracing/all-in-one:1.66.0
+
+grafanaDashboards: true   # ConfigMap picked up by the Grafana dashboard sidecar

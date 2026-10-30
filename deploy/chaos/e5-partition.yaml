@@ -1,0 +1,21 @@
+# E5: partition one worker pod from the routers for 20s (both directions).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: relay-e5-partition
+  namespace: relay
+spec:
+  action: partition
+  mode: one
+  direction: both
+  duration: 20s
+  selector:
+    namespaces: [relay]
+    labelSelectors:
+      app.kubernetes.io/name: relay-worker
+  target:
+    mode: all
+    selector:
+      namespaces: [relay]
+      labelSelectors:
+        app.kubernetes.io/name: relay-router

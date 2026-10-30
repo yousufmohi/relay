@@ -1,0 +1,27 @@
+[18:30:22] running e1 (full)
+[18:30:22] E1 shared-system-prompt / round_robin
+[18:30:22] E1 shared-system-prompt / least_loaded
+[18:30:22] E1 shared-system-prompt / consistent_hash
+[18:30:22] E1 shared-system-prompt / relay
+[18:30:22] E1 shared-system-prompt / relay_floor4
+[18:31:26] E1 multi-turn-chat / round_robin
+[18:31:26] E1 multi-turn-chat / least_loaded
+[18:31:26] E1 multi-turn-chat / consistent_hash
+[18:31:26] E1 multi-turn-chat / relay
+[18:31:26] E1 multi-turn-chat / relay_floor4
+[18:32:45] E1 rag-shared-docs / round_robin
+[18:32:45] E1 rag-shared-docs / least_loaded
+[18:32:45] E1 rag-shared-docs / consistent_hash
+[18:32:45] E1 rag-shared-docs / relay
+[18:32:45] E1 rag-shared-docs / relay_floor4
+[18:33:49] E1 unique / round_robin
+[18:33:49] E1 unique / least_loaded
+[18:33:49] E1 unique / consistent_hash
+[18:33:49] E1 unique / relay
+[18:33:49] E1 unique / relay_floor4
+[18:34:54] E1 hot-prefix / round_robin
+[18:34:54] E1 hot-prefix / least_loaded
+[18:34:54] E1 hot-prefix / consistent_hash
+[18:34:54] E1 hot-prefix / relay
+[18:34:54] E1 hot-prefix / relay_floor4
+[18:35:58] analyzing e1

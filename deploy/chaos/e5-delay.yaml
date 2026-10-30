@@ -1,0 +1,17 @@
+# Variant of E5: 2s network delay on one worker (slow, not dead) for 30s.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: relay-e5-delay
+  namespace: relay
+spec:
+  action: delay
+  mode: one
+  duration: 30s
+  delay:
+    latency: 2s
+    jitter: 200ms
+  selector:
+    namespaces: [relay]
+    labelSelectors:
+      app.kubernetes.io/name: relay-worker

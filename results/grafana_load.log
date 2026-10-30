@@ -1,0 +1,2 @@
+2026/10/25 19:25:55 workload=shared-system-prompt kind=shared-system-prompt rate=4.00/s duration=3m20s max_tokens=64 targets=http://localhost:30080rrequests=826 ok=826 status=map[ok:826] dropped_by_generator=0 failovers=0
+throughput=4.11 req/s  ttft_p50=78ms ttft_p99=1601ms  cache_hit_rate=0.890

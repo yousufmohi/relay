@@ -1,0 +1,26 @@
+adminPassword: relay
+service:
+  type: NodePort
+  nodePort: 30300
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc
+        isDefault: true
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    searchNamespace: ALL
+resources:
+  requests: {cpu: 50m, memory: 128Mi}
+  limits: {cpu: 500m, memory: 512Mi}
+# Local dev cluster only: read-only anonymous access so dashboards can be
+# screenshotted headlessly (scripts/grafana-screenshots.sh).
+grafana.ini:
+  auth.anonymous:
+    enabled: true
+    org_role: Viewer

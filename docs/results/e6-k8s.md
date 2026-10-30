@@ -1,0 +1,12 @@
+## E6 — Killing a router replica (k8s)
+
+Two router replicas, each building its own prefix index from its own decisions and its own sidecar streams (no shared
+state). The load generator spreads requests over both and retries connection failures on the other replica. Router-1
+is killed at 20 s and restarted at 35 s with an empty index. (Requests are bucketed by start time, so streams that
+started on router-1 shortly before the kill show up as retries just before 20 s.)
+
+![E6](figures/e6_router_kill-k8s.png)
+
+| requests | dropped (client-visible errors) | requests that needed a connection retry | hit rate before kill | one router | first 5 s after restart | last 15 s |
+|---:|---:|---:|---:|---:|---:|---:|
+| 301 | 0 | 2 | 0.784 | 0.845 | 0.938 | 0.883 |

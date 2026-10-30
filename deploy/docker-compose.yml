@@ -1,0 +1,104 @@
+# Fastest local loop: one router + three llama.cpp CPU workers, each with a
+# sidecar sharing its network namespace (like containers in one pod).
+#
+#   docker compose -f deploy/docker-compose.yml up --build router      (ROUTER_PORT=... if 8080 is taken)
+#   curl -N localhost:8080/v1/chat/completions -H 'Content-Type: application/json' \
+#     -d '{"messages":[{"role":"user","content":"Hi"}],"stream":true,"max_tokens":32}'
+#
+# `--profile sim` runs simulated workers instead of llama.cpp (no model download).
+name: relay
+
+x-llama: &llama
+  image: ghcr.io/ggml-org/llama.cpp:server
+  # -np 4: four parallel slots. --metrics: Prometheus endpoint for the sidecar.
+  # cache_prompt is on per request, so each slot reuses its cached prefix.
+  command: ["-m", "/models/qwen2.5-0.5b-instruct-q4_k_m.gguf", "--host", "0.0.0.0", "--port", "8080",
+            "-np", "4", "-c", "8192", "--metrics", "-t", "2"]
+  volumes: ["models:/models:ro"]
+  depends_on:
+    model-download: {condition: service_completed_successfully}
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+    interval: 5s
+    retries: 60
+  deploy:
+    resources:
+      limits: {cpus: "2", memory: 2g}
+
+x-sidecar: &sidecar
+  build: {context: .., args: {COMPONENT: sidecar}}
+  image: relay/sidecar:dev
+  environment: &sidecar-env
+    MODEL_URL: http://127.0.0.1:8080
+    WORKER_FLAVOR: llamacpp
+    GRPC_ADDR: ":9500"
+    HTTP_ADDR: ":9501"
+    SIDECAR_SCRAPE_MS: "250"
+
+services:
+  model-download:
+    image: curlimages/curl:8.11.1
+    user: root
+    volumes: ["models:/models"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        test -s /models/qwen2.5-0.5b-instruct-q4_k_m.gguf ||
+        curl -fL --retry 5 -o /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+        https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+
+  worker1: {<<: *llama}
+  worker2: {<<: *llama}
+  worker3: {<<: *llama}
+
+  sidecar1: {<<: *sidecar, network_mode: "service:worker1", environment: {<<: *sidecar-env, WORKER_ID: worker1}}
+  sidecar2: {<<: *sidecar, network_mode: "service:worker2", environment: {<<: *sidecar-env, WORKER_ID: worker2}}
+  sidecar3: {<<: *sidecar, network_mode: "service:worker3", environment: {<<: *sidecar-env, WORKER_ID: worker3}}
+
+  router:
+    build: {context: .., args: {COMPONENT: router}}
+    image: relay/router:dev
+    ports: ["${ROUTER_PORT:-8080}:8080"]
+    environment:
+      POLICY: ${POLICY:-relay}
+      WORKERS: worker1=http://worker1:8080|worker1:9500,worker2=http://worker2:8080|worker2:9500,worker3=http://worker3:8080|worker3:9500
+      WORKER_FLAVOR: llamacpp
+      WORKER_MODEL: qwen2.5-0.5b-instruct
+      CHAT_TEMPLATE: chatml
+      TOKENIZER: remote
+      BLOCK_SIZE_TOKENS: "64"
+      # CPU prefill of a long prompt can take several seconds on llama.cpp.
+      STALL_TIMEOUT_MS: "10000"
+      FIRST_TOKEN_TIMEOUT_MS: "120000"
+    depends_on:
+      worker1: {condition: service_healthy}
+      worker2: {condition: service_healthy}
+      worker3: {condition: service_healthy}
+      sidecar1: {condition: service_started}
+      sidecar2: {condition: service_started}
+      sidecar3: {condition: service_started}
+
+  # ----- simulated workers (docker compose --profile sim up) ---------------
+  simworker1: &sim
+    profiles: ["sim"]
+    build: {context: .., args: {COMPONENT: simworker}}
+    image: relay/simworker:dev
+    command: ["-addr", ":8080", "-slots", "4", "-cache-tokens", "24000"]
+  simworker2: {<<: *sim}
+  simworker3: {<<: *sim}
+  simsidecar1: {<<: *sidecar, profiles: ["sim"], network_mode: "service:simworker1", environment: {<<: *sidecar-env, WORKER_ID: simworker1}}
+  simsidecar2: {<<: *sidecar, profiles: ["sim"], network_mode: "service:simworker2", environment: {<<: *sidecar-env, WORKER_ID: simworker2}}
+  simsidecar3: {<<: *sidecar, profiles: ["sim"], network_mode: "service:simworker3", environment: {<<: *sidecar-env, WORKER_ID: simworker3}}
+  simrouter:
+    profiles: ["sim"]
+    image: relay/router:dev
+    build: {context: .., args: {COMPONENT: router}}
+    ports: ["${SIMROUTER_PORT:-8081}:8080"]
+    environment:
+      POLICY: ${POLICY:-relay}
+      WORKERS: s1=http://simworker1:8080|simworker1:9500,s2=http://simworker2:8080|simworker2:9500,s3=http://simworker3:8080|simworker3:9500
+      WORKER_MODEL: sim-qwen2.5-7b
+    depends_on: [simsidecar1, simsidecar2, simsidecar3]
+
+volumes:
+  models:

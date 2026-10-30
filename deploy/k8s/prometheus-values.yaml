@@ -1,0 +1,16 @@
+# Plain Prometheus that scrapes pods annotated prometheus.io/scrape=true
+# (router, autoscaler). Small footprint for a laptop cluster.
+alertmanager: {enabled: false}
+prometheus-pushgateway: {enabled: false}
+kube-state-metrics: {enabled: false}
+prometheus-node-exporter: {enabled: false}
+server:
+  global:
+    scrape_interval: 5s
+    scrape_timeout: 4s
+    evaluation_interval: 5s
+  persistentVolume: {enabled: false}
+  retention: 6h
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}

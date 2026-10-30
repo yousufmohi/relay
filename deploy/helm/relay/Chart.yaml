@@ -1,0 +1,6 @@
+apiVersion: v2
+name: relay
+description: Relay — a cache-aware LLM inference router (router replicas, model workers with sidecars, autoscaler)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

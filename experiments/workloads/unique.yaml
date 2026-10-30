@@ -1,0 +1,9 @@
+# No shared prefixes at all: Relay must not lose to the baselines here.
+name: unique
+kind: unique
+rate: 5
+duration: 60s
+max_tokens: 48
+temperature: 0
+params:
+  prompt_tokens: [500, 2000]

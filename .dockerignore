@@ -1,0 +1,7 @@
+.git
+.venv
+bin
+results
+docs/figures
+deploy/terraform/**/.terraform
+**/__pycache__

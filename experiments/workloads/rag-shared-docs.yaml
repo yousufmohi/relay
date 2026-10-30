@@ -1,0 +1,12 @@
+# Questions over a small set of long documents.
+name: rag-shared-docs
+kind: rag-shared-docs
+rate: 4
+duration: 60s
+max_tokens: 48
+temperature: 0
+params:
+  prefixes: 12
+  prefix_tokens: 2500
+  zipf_s: 1.3
+  user_tokens: [20, 60]

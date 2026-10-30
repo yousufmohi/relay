@@ -1,0 +1,14 @@
+# E6: kill one router replica (the Deployment recreates it with an empty index).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: relay-e6-router-kill
+  namespace: relay
+spec:
+  action: pod-kill
+  mode: one
+  gracePeriod: 0
+  selector:
+    namespaces: [relay]
+    labelSelectors:
+      app.kubernetes.io/name: relay-router
