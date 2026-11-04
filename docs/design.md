@@ -61,7 +61,6 @@ How the router, sidecar and autoscaler work, and what each experiment measures. 
 
 ```
 relay/
-├── README.md
 ├── Makefile, Dockerfile     # one multi-stage Dockerfile, --build-arg COMPONENT=...
 ├── docs/
 │   ├── decisions.md
