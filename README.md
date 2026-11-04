@@ -6,7 +6,7 @@ LLM servers cache the prompts they've recently processed. A request that shares 
 
 ## Results
 
-Simulated 4-worker cluster (real router and sidecars, emulated llama.cpp workers), 3 seeds per cell:
+Simulated 4-worker cluster (real router and sidecars, emulated llama.cpp workers). The first three columns pool 3 seeds per cell. The last column is from a single-seed load sweep.
 
 | policy | TTFT p99, shared-prefix workloads | cache hit rate | TTFT p99, hot prefix | max load at p99 ≤ 1 s |
 |---|---:|---:|---:|---:|
@@ -35,6 +35,19 @@ curl -N localhost:8081/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Say hi"}],"max_tokens":32,"stream":true}'
 curl localhost:8081/debug/workers   # per-worker load and cache view
 ```
+
+To watch the cache routing, run `python scripts/demo.py`. It sends six requests that share one of two long system prompts. Output from one run against the simulated stack:
+
+```
+support  How do I reset my password?    worker=s1  ttft= 374 ms
+support  Where are my invoices?         worker=s1  ttft=  37 ms
+review   Review this handler.           worker=s3  ttft= 323 ms
+support  Can I change regions?          worker=s1  ttft=  36 ms
+review   Is this loop racy?             worker=s3  ttft=  34 ms
+support  How do I delete my account?    worker=s1  ttft=  31 ms
+```
+
+The first request with each system prompt pays for the whole prefix. After that, each prompt sticks to the worker that has it cached and gets its first token about 10× sooner. The demo is too light to show the other half: under load, Relay moves a hot prefix to more workers instead of overloading one (E3 in the report).
 
 To run against real models instead (three llama.cpp CPU workers serving Qwen2.5-0.5B-Instruct), use `make compose-up` and send the same request to port 8080.
 
